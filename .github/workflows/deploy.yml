@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build image and deploy to EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" -t "$REGISTRY/$REPOSITORY:latest" .
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$REGISTRY/$REPOSITORY:latest"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          envs: REGISTRY,REPOSITORY,IMAGE_TAG
+          script: |
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin "$REGISTRY"
+            docker pull "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+            docker stop tripcast || true
+            docker rm tripcast || true
+            docker run -d \
+              --name tripcast \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              --env-file /home/${{ secrets.EC2_USERNAME }}/tripcast/app.env \
+              "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+            docker image prune -f
