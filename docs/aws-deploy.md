@@ -7,13 +7,14 @@ GitHub (main push)
   └─ Test 워크플로우 통과
        └─ Deploy 워크플로우
             1. Docker 이미지 빌드 → ECR push
-            2. EC2에 SSH 접속 → 새 이미지 pull → 컨테이너 재시작
+            2. AWS SSM(Systems Manager)으로 EC2에 명령 전송 → 새 이미지 pull → 컨테이너 재시작
 
 EC2 (Docker, 애플리케이션) ──── RDS MySQL (TripCast DB)
 ```
 
 - **EC2 + Docker**: 인스턴스를 직접 관리해야 하지만 비용이 가장 저렴하고(프리티어 가능) 지금까지 만든 Dockerfile을 그대로 재사용할 수 있어 학습 목적에 적합하다. ECS/Fargate는 서버 관리가 필요 없는 대신 VPC·태스크 정의·로드밸런서 설정이 늘어나 초기 러닝커브가 더 크다.
 - **RDS MySQL**: 백업, 패치, 장애 조치를 AWS가 대신 처리한다. 프리티어(`db.t3.micro`, 12개월)로 시작할 수 있어 EC2에 직접 MySQL을 올리는 것보다 실무 구성에 가깝다.
+- **배포는 SSH가 아니라 SSM으로**: GitHub Actions 러너는 매번 IP가 바뀌기 때문에 "특정 IP에서만 22번 포트 허용"으로는 CI에서 SSH 접속이 안 된다. 그렇다고 22번을 전체 공개하면 보안그룹이 뚫려 있는 것이라 바람직하지 않다. AWS Systems Manager(SSM)의 `send-command`를 쓰면 22번 포트를 아예 열지 않고도 AWS API로 EC2에 원격 명령을 보낼 수 있다. 사람이 직접 접속할 때(5단계)는 SSH를 그대로 쓰고, CI 자동 배포만 SSM으로 처리한다.
 
 이 문서의 AWS CLI 명령은 리전 `ap-northeast-2`(서울) 기준이다. 콘솔 스크린샷 위치는 UI 업데이트로 바뀔 수 있어 CLI 명령 위주로 적었고, 콘솔로 진행해도 무방하다.
 
@@ -97,6 +98,10 @@ aws iam create-role --role-name tripcast-ec2-role \
 aws iam attach-role-policy --role-name tripcast-ec2-role \
   --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
 
+# GitHub Actions가 SSH 대신 SSM으로 배포 명령을 보낼 수 있게 하는 권한
+aws iam attach-role-policy --role-name tripcast-ec2-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
 aws iam create-instance-profile --instance-profile-name tripcast-ec2-profile
 aws iam add-role-to-instance-profile --instance-profile-name tripcast-ec2-profile --role-name tripcast-ec2-role
 ```
@@ -123,12 +128,20 @@ usermod -aG docker ec2-user' \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=tripcast}]'
 ```
 
-퍼블릭 IP 확인:
+퍼블릭 IP와 인스턴스 ID 확인:
 
 ```bash
 aws ec2 describe-instances --filters "Name=tag:Name,Values=tripcast" \
-  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
+  --query 'Reservations[0].Instances[0].[InstanceId,PublicIpAddress]' --output text
 ```
+
+인스턴스 ID는 6단계에서 `EC2_INSTANCE_ID` 시크릿으로 쓰인다. SSM에 정상 등록됐는지도 확인한다(부팅 후 1~2분 소요, `AmazonSSMManagedInstanceCore` 정책이 붙어 있어야 한다).
+
+```bash
+aws ssm describe-instance-information --filters "Key=InstanceIds,Values=<INSTANCE_ID>"
+```
+
+`"PingStatus": "Online"`이 보이면 SSM으로 명령을 받을 준비가 된 것이다.
 
 ## 5. EC2에 런타임 환경변수 파일 준비
 
@@ -154,18 +167,25 @@ chmod 600 ~/tripcast/app.env
 
 ## 6. GitHub Secrets 등록
 
+배포 전용 IAM 사용자(또는 로컬에서 쓰던 사용자)에 ECR push 권한과 함께, SSM으로 명령을 보낼 수 있는 권한도 필요하다.
+
+```bash
+aws iam attach-user-policy --user-name <배포용 IAM 사용자> \
+  --policy-arn arn:aws:iam::aws:policy/AmazonSSMFullAccess
+```
+
 리포지토리 Settings → Secrets and variables → Actions에 등록한다.
 
 | Secret | 값 |
 | --- | --- |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | 배포 전용 IAM 사용자(ECR push 권한만 부여 권장) |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | 배포 전용 IAM 사용자 자격 증명 |
 | `AWS_REGION` | `ap-northeast-2` |
 | `ECR_REPOSITORY` | `tripcast` |
-| `EC2_HOST` | EC2 퍼블릭 IP 또는 도메인 |
-| `EC2_USERNAME` | `ec2-user` |
-| `EC2_SSH_PRIVATE_KEY` | `tripcast-key.pem` 파일 내용 전체 |
+| `EC2_INSTANCE_ID` | 4단계에서 확인한 EC2 인스턴스 ID (예: `i-0123456789abcdef0`) |
 
-이 저장소에는 [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)이 이미 추가되어 있다. `main`에 push되어 기존 `Test` 워크플로우가 성공하면 자동으로 이어서 실행되어, 이미지를 빌드해 ECR에 올리고 EC2에서 컨테이너를 재시작한다.
+`EC2_HOST`, `EC2_USERNAME`, `EC2_SSH_PRIVATE_KEY`는 CI 자동 배포에는 더 이상 쓰이지 않는다(5단계처럼 사람이 직접 SSH로 들어갈 때만 필요). 등록해뒀다면 그대로 둬도 되고, 안 쓸 거면 지워도 된다.
+
+이 저장소에는 [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)이 이미 추가되어 있다. `main`에 push되어 기존 `Test` 워크플로우가 성공하면 자동으로 이어서 실행되어, 이미지를 빌드해 ECR에 올리고 `aws ssm send-command`로 EC2에 배포 명령을 보낸다.
 
 ## 7. 최초 배포 확인
 
