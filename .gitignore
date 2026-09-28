@@ -3,6 +3,9 @@ HELP.md
 build/
 .env
 TripCast_backup_*.sql
+*.pem
+trust-policy.json
+user-data.sh
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
