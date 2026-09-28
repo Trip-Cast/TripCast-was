@@ -9,7 +9,7 @@ GitHub (main push)
             1. Docker 이미지 빌드 → ECR push
             2. AWS SSM(Systems Manager)으로 EC2에 명령 전송 → 새 이미지 pull → 컨테이너 재시작
 
-EC2 (Docker, 애플리케이션) ──── RDS MySQL (TripCast DB)
+사용자 → https://<이름>.duckdns.org → EC2 Nginx(443/80, Let's Encrypt) → 127.0.0.1:8080 (Docker, 애플리케이션) ──── RDS MySQL (TripCast DB)
 ```
 
 - **EC2 + Docker**: 인스턴스를 직접 관리해야 하지만 비용이 가장 저렴하고(프리티어 가능) 지금까지 만든 Dockerfile을 그대로 재사용할 수 있어 학습 목적에 적합하다. ECS/Fargate는 서버 관리가 필요 없는 대신 VPC·태스크 정의·로드밸런서 설정이 늘어나 초기 러닝커브가 더 크다.
@@ -197,7 +197,100 @@ curl http://<EC2_퍼블릭IP>:8080/swagger-ui.html
 
 Flyway는 컨테이너 기동 시 자동으로 스키마를 생성하므로 RDS에 별도로 DDL을 실행할 필요는 없다([docs/flyway-migration.md](flyway-migration.md) 참고).
 
-## 8. 비용 관리 메모
+## 8. HTTPS 도메인 연결 (DuckDNS + Nginx + Let's Encrypt)
+
+퍼블릭 IP를 그대로 쓰면 HTTP로만 접근 가능하고, IP가 바뀌면 접속 주소도 바뀐다. 도메인이 필요한데 구매 비용 없이 해결하려면 무료 동적 DNS(DuckDNS) + 무료 인증서(Let's Encrypt) 조합을 쓴다.
+
+```
+사용자 → https://<이름>.duckdns.org → EC2 Nginx(443/80) → 127.0.0.1:8080 (Spring Boot 컨테이너)
+```
+
+### 8-1. Elastic IP 고정
+
+EC2를 멈췄다 켜면 퍼블릭 IP가 바뀔 수 있어서, 도메인이 가리킬 IP를 고정해야 한다.
+
+```bash
+EIP_ALLOC=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
+aws ec2 associate-address --instance-id <INSTANCE_ID> --allocation-id "$EIP_ALLOC"
+aws ec2 describe-instances --instance-ids <INSTANCE_ID> --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
+```
+
+> Elastic IP는 인스턴스에 붙어서 실행 중일 때는 무료지만, 인스턴스를 중지한 채로 오래 두면 IP만 따로 과금된다.
+
+### 8-2. DuckDNS 서브도메인 발급
+
+1. https://www.duckdns.org 접속 → 로그인 → reCAPTCHA 통과
+2. 상단에 보이는 토큰 확인(자동 갱신 스크립트를 쓸 경우 필요, Elastic IP로 고정했다면 필수는 아니다)
+3. subdomain 입력 후 add domain → 방금 받은 Elastic IP를 입력하고 update ip
+
+`nslookup <이름>.duckdns.org`로 Elastic IP와 같은 주소가 나오는지 확인한다.
+
+### 8-3. 보안그룹에 80/443 열기
+
+```bash
+aws ec2 authorize-security-group-ingress --group-id "$EC2_SG_ID" --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id "$EC2_SG_ID" --protocol tcp --port 443 --cidr 0.0.0.0/0
+```
+
+80번도 반드시 열어야 한다 — Let's Encrypt가 인증서를 발급할 때 HTTP-01 챌린지로 80번에 접근해서 도메인 소유를 확인하기 때문에, 80번이 막혀 있으면 `Timeout during connect` 에러로 발급이 실패한다.
+
+### 8-4. Nginx + certbot 설치, 리버스 프록시 설정
+
+EC2 안에서(SSH 접속 후):
+
+```bash
+sudo dnf install -y nginx
+sudo systemctl enable --now nginx
+
+sudo tee /etc/nginx/conf.d/tripcast.conf > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name <이름>.duckdns.org;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+
+# Amazon Linux 2023은 pip으로 certbot 설치가 공식 권장 방법
+sudo dnf install -y python3-pip augeas-libs
+sudo python3 -m venv /opt/certbot
+sudo /opt/certbot/bin/pip install --upgrade pip
+sudo /opt/certbot/bin/pip install certbot certbot-nginx
+sudo ln -s /opt/certbot/bin/certbot /usr/bin/certbot
+```
+
+### 8-5. 인증서 발급 및 자동 갱신
+
+```bash
+sudo certbot --nginx -d <이름>.duckdns.org --non-interactive --agree-tos -m <본인 이메일> --redirect
+```
+
+`--redirect`를 쓰면 certbot이 Nginx 설정에 443 서버 블록을 추가하고 HTTP→HTTPS 리다이렉트까지 자동으로 구성해준다. 인증서는 90일마다 갱신이 필요하므로 크론으로 자동화한다.
+
+```bash
+echo "0 0,12 * * * root /opt/certbot/bin/certbot renew -q" | sudo tee -a /etc/crontab
+```
+
+### 8-6. 8080 직접 노출 차단
+
+Nginx가 443/80에서 8080으로 내부 전달을 해주므로, 8080을 외부에 그대로 열어둘 필요가 없다.
+
+```bash
+aws ec2 revoke-security-group-ingress --group-id "$EC2_SG_ID" --protocol tcp --port 8080 --cidr 0.0.0.0/0
+```
+
+이후로는 `https://<이름>.duckdns.org/swagger-ui.html`로만 접근 가능하고, `http://<IP>:8080`은 막힌다.
+
+## 9. 비용 관리 메모
 
 - `db.t3.micro` + `t3.micro`는 프리티어 대상이지만 계정의 프리티어 사용 기간을 확인할 것.
 - 사용하지 않을 때는 `aws ec2 stop-instances`, `aws rds stop-db-instance`로 멈춰서 과금을 줄일 수 있다(RDS는 최대 7일까지만 정지 유지, 이후 자동 재시작됨).
