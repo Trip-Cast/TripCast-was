@@ -79,6 +79,7 @@ Docker가 실행 중이면 Testcontainers로 실제 MySQL에서 검증하는 테
 | --- | --- | --- |
 | `DB_PASSWORD` | 로컬 MySQL 비밀번호 | |
 | `DB_HOST`, `DB_PORT` | MySQL 접속 주소 | 생략 시 `localhost:3306` |
+| `DB_USERNAME` | MySQL 접속 계정 | 생략 시 `root`. RDS는 `root`를 마스터 사용자명으로 쓸 수 없으므로 배포 시 필수 |
 | `WEATHER_API_KEY` | 기상청 API 허브(단기예보) 인증키 | [apihub.kma.go.kr](https://apihub.kma.go.kr)에서 발급 |
 | `TOUR_CLIMATE_API_KEY` | 공공데이터포털 관광기후지수 API 키 | [data.go.kr](https://www.data.go.kr) 서비스 `15056912` 활용신청 후 발급 |
 | `JWT_SECRET` | JWT 서명 키 | 32자(256비트) 이상 필수 |
@@ -128,6 +129,7 @@ src/main/java/com/tripcast/tourweather/
 - 관광기후지수 연동(외부 API, 배치, 환경변수) 가이드: [docs/tour-climate-api.md](docs/tour-climate-api.md)
 - DB 스키마 관리(Flyway 마이그레이션, 기존 DB 편입) 가이드: [docs/flyway-migration.md](docs/flyway-migration.md)
 - 인증(JWT, 관리자 API) 가이드: [docs/auth.md](docs/auth.md)
+- AWS 배포(EC2 + RDS + GitHub Actions) 가이드: [docs/aws-deploy.md](docs/aws-deploy.md)
 
 <details>
 <summary><h2> 컨벤션 </h2></summary>
