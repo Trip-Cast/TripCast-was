@@ -1,0 +1,105 @@
+<svg viewBox="0 0 1000 650" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrowhead"/>
+    </marker>
+  </defs>
+
+  <style>
+    .bg { fill: #ffffff; }
+    .canvas-text { fill: #1f2328; }
+    .box { stroke-width: 1.5; }
+    .box-label { font-size: 15px; font-weight: 600; }
+    .box-sub { font-size: 12px; }
+    .edge { stroke: #6e7781; stroke-width: 1.6; fill: none; }
+    .arrowhead { fill: #6e7781; }
+    .edge-label { font-size: 12px; fill: #57606a; }
+    .group-box { fill: none; stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .group-label { font-size: 13px; font-weight: 700; fill: #57606a; }
+
+    .box-github   { fill: #f6f8fa; stroke: #57606a; }
+    .box-actions  { fill: #ddf4ff; stroke: #0969da; }
+    .box-aws      { fill: #fff2e0; stroke: #d97a1a; }
+    .box-nginx    { fill: #e6f4ea; stroke: #1a7f37; }
+    .box-docker   { fill: #dbeafe; stroke: #1f6feb; }
+    .box-user     { fill: #f3e8ff; stroke: #8250df; }
+
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .canvas-text { fill: #e6edf3; }
+      .edge { stroke: #8b949e; }
+      .arrowhead { fill: #8b949e; }
+      .edge-label { fill: #9198a1; }
+      .group-box { stroke: #6e7681; }
+      .group-label { fill: #9198a1; }
+
+      .box-github   { fill: #21262d; stroke: #8b949e; }
+      .box-actions  { fill: #102a43; stroke: #58a6ff; }
+      .box-aws      { fill: #3a2a12; stroke: #e3a008; }
+      .box-nginx    { fill: #10241a; stroke: #3fb950; }
+      .box-docker   { fill: #0d2847; stroke: #58a6ff; }
+      .box-user     { fill: #2a1e42; stroke: #a371f7; }
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1000" height="650"/>
+
+  <!-- Row 1: GitHub -> GitHub Actions -> ECR -->
+  <rect class="box box-github" x="40" y="50" width="170" height="70" rx="10"/>
+  <text class="canvas-text box-label" x="125" y="80" text-anchor="middle">GitHub</text>
+  <text class="canvas-text box-sub" x="125" y="100" text-anchor="middle">main 브랜치 push</text>
+
+  <rect class="box box-actions" x="330" y="50" width="200" height="70" rx="10"/>
+  <text class="canvas-text box-label" x="430" y="80" text-anchor="middle">GitHub Actions</text>
+  <text class="canvas-text box-sub" x="430" y="100" text-anchor="middle">Test → Deploy</text>
+
+  <rect class="box box-aws" x="790" y="50" width="170" height="70" rx="10"/>
+  <text class="canvas-text box-label" x="875" y="80" text-anchor="middle">Amazon ECR</text>
+  <text class="canvas-text box-sub" x="875" y="100" text-anchor="middle">Docker 이미지</text>
+
+  <path class="edge" d="M 210 85 L 322 85" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="266" y="76" text-anchor="middle">push</text>
+
+  <path class="edge" d="M 530 85 L 782 85" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="656" y="76" text-anchor="middle">docker build &amp; push</text>
+
+  <!-- EC2 group -->
+  <rect class="group-box" x="290" y="230" width="440" height="330" rx="14"/>
+  <text class="group-label" x="310" y="256">EC2 인스턴스</text>
+
+  <rect class="box box-nginx" x="330" y="280" width="200" height="80" rx="10"/>
+  <text class="canvas-text box-label" x="430" y="312" text-anchor="middle">Nginx (:80 / :443)</text>
+  <text class="canvas-text box-sub" x="430" y="332" text-anchor="middle">Let's Encrypt HTTPS</text>
+
+  <rect class="box box-docker" x="330" y="420" width="200" height="80" rx="10"/>
+  <text class="canvas-text box-label" x="430" y="452" text-anchor="middle">Docker</text>
+  <text class="canvas-text box-sub" x="430" y="472" text-anchor="middle">Spring Boot :8080</text>
+
+  <path class="edge" d="M 430 360 L 430 417" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="446" y="393">reverse proxy</text>
+
+  <!-- Actions -> EC2 (SSM) -->
+  <path class="edge" d="M 430 120 L 430 227" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="446" y="180">SSM send-command</text>
+  <text class="edge-label" x="446" y="196">(컨테이너 재배포)</text>
+
+  <!-- ECR -> EC2 (image pull) -->
+  <path class="edge" d="M 910 120 L 910 610 L 430 610 L 430 563" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="670" y="626" text-anchor="middle">docker pull</text>
+
+  <!-- RDS -->
+  <rect class="box box-aws" x="790" y="420" width="170" height="80" rx="10"/>
+  <text class="canvas-text box-label" x="875" y="452" text-anchor="middle">RDS MySQL</text>
+  <text class="canvas-text box-sub" x="875" y="472" text-anchor="middle">TripCast DB</text>
+
+  <path class="edge" d="M 530 460 L 787 460" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="658" y="450" text-anchor="middle">JDBC :3306</text>
+
+  <!-- User -->
+  <rect class="box box-user" x="60" y="420" width="170" height="80" rx="10"/>
+  <text class="canvas-text box-label" x="145" y="452" text-anchor="middle">사용자</text>
+  <text class="canvas-text box-sub" x="145" y="472" text-anchor="middle">브라우저 / API 클라이언트</text>
+
+  <path class="edge" d="M 230 455 L 327 320" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="245" y="400">https://tripcast.duckdns.org</text>
+</svg>
