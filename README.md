@@ -85,6 +85,7 @@ Docker가 실행 중이면 Testcontainers로 실제 MySQL에서 검증하는 테
 | `JWT_SECRET` | JWT 서명 키 | 32자(256비트) 이상 필수 |
 | `JWT_EXPIRATION_MINUTES` | 토큰 만료 시간(분) | 생략 시 60 |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | 관리자 로그인 계정 | 회원가입 없이 단일 계정만 사용 |
+| `CORS_ALLOWED_ORIGINS` | `/api/**`에 대한 CORS 허용 오리진(콤마 구분) | 생략 시 `http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000,http://127.0.0.1:8000` (로컬 정적 서버용 기본값) |
 
 ## Docker로 실행
 
