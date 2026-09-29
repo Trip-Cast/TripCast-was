@@ -143,6 +143,9 @@ class TourCourseControllerTest {
                 .thenReturn(List.of(new CourseRecommendationResponse(
                         2L,
                         "TH02",
+                        "해운대해수욕장",
+                        "해변",
+                        3L,
                         new ClimateIndexResponse(
                                 "2611000000",
                                 LocalDate.of(2026, 9, 23),
