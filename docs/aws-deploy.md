@@ -259,6 +259,11 @@ EOF
 
 sudo nginx -t
 sudo systemctl reload nginx
+```
+
+nginx가 `X-Forwarded-Proto` 헤더로 원래 요청 스킴(HTTPS)을 전달해도, Spring Boot는 기본적으로 이 헤더를 신뢰하지 않는다. `server.forward-headers-strategy=framework`(`application.properties`)를 설정해야 Swagger `servers.url` 등에서 `http://`가 아닌 실제 `https://` 스킴이 반영된다.
+
+```bash
 
 # Amazon Linux 2023은 pip으로 certbot 설치가 공식 권장 방법
 sudo dnf install -y python3-pip augeas-libs

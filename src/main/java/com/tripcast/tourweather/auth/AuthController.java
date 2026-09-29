@@ -36,6 +36,6 @@ public class AuthController {
                 request.username(),
                 request.password()
         );
-        return new LoginResponse(token);
+        return new LoginResponse(token, request.username());
     }
 }

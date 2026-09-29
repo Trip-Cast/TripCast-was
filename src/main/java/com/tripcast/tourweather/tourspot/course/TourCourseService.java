@@ -136,9 +136,14 @@ public class TourCourseService {
                     if (climateIndex == null) {
                         return null;
                     }
+                    long stopCount = courseStopRepository
+                            .countByCourseId(course.getId());
                     return new CourseRecommendationResponse(
                             course.getId(),
                             course.getSourceCourseId(),
+                            firstStop.getTourSpot().getName(),
+                            firstStop.getThemeName(),
+                            stopCount,
                             climateIndex
                     );
                 })
