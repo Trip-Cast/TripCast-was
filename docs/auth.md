@@ -44,7 +44,7 @@ Authorization: Bearer <token>
 
 | Method | Endpoint | 설명 |
 | --- | --- | --- |
-| POST | `/api/admin/climate-index/sync` | 배치를 기다리지 않고 관광기후지수를 즉시 동기화 (`app.climate-index-sync.enabled=true`일 때만 존재) |
+| POST | `/api/admin/climate-index/sync` | 배치를 기다리지 않고 관광기후지수를 즉시 동기화 (`app.climate-index-sync.api-enabled=true`일 때만 존재) |
 
 그 외 조회 API(`/api/tour-spots/**`, `/api/tour-courses/**`, `/api/weather/**`, `/api/regions/**`)는 인증 없이 공개돼 있다.
 

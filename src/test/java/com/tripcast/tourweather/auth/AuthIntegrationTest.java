@@ -15,7 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.jayway.jsonpath.JsonPath;
 
 @SpringBootTest(properties = {
-        "app.climate-index-sync.enabled=true"
+        "app.climate-index-sync.api-enabled=true"
 })
 @AutoConfigureMockMvc
 class AuthIntegrationTest {

@@ -14,7 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest(properties = {
         "springdoc.api-docs.enabled=true",
         "springdoc.swagger-ui.enabled=true",
-        "app.climate-index-sync.enabled=true"
+        "app.climate-index-sync.api-enabled=true"
 })
 @AutoConfigureMockMvc
 class OpenApiContractTest {

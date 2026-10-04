@@ -28,7 +28,8 @@ import com.tripcast.tourweather.tourspot.course.TourCourseStop;
 import com.tripcast.tourweather.tourspot.course.TourCourseStopRepository;
 
 @SpringBootTest(properties = {
-        "app.climate-index-sync.enabled=true",
+        "app.climate-index-sync.api-enabled=true",
+        "app.climate-index-sync.scheduler-enabled=true",
         "app.climate-index-sync.cron=0 0 0 1 1 *"
 })
 @Transactional

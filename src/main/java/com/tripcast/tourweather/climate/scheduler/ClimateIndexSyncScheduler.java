@@ -15,7 +15,7 @@ import com.tripcast.tourweather.climate.ClimateIndexSyncService;
 
 @Component
 @ConditionalOnProperty(
-        name = "app.climate-index-sync.enabled",
+        name = "app.climate-index-sync.scheduler-enabled",
         havingValue = "true"
 )
 public class ClimateIndexSyncScheduler {

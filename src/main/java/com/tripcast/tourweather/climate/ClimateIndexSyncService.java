@@ -9,7 +9,6 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.tripcast.tourweather.climate.client.TourWeatherIndexClient;
@@ -20,10 +19,7 @@ import com.tripcast.tourweather.climate.util.ClimateRegionIdNormalizer;
 import com.tripcast.tourweather.tourspot.course.TourCourseStopRepository;
 
 @Service
-@ConditionalOnProperty(
-        name = "app.climate-index-sync.enabled",
-        havingValue = "true"
-)
+@ConditionalOnClimateIndexSync
 public class ClimateIndexSyncService {
 
     private static final Logger log =
