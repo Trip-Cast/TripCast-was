@@ -88,7 +88,7 @@ Docker가 실행 중이면 Testcontainers로 실제 MySQL에서 검증하는 테
 | `CLIMATE_INDEX_SYNC_API_ENABLED` | 관리자 수동 동기화 API(`/api/admin/climate-index/sync`) 활성화 여부 | 생략 시 `CLIMATE_INDEX_SYNC_ENABLED` 값, 그것도 없으면 `false`. `true`이고 `TOUR_CLIMATE_API_KEY`가 설정돼야 Swagger에 노출됨 |
 | `CLIMATE_INDEX_SYNC_SCHEDULER_ENABLED` | 매일 05:00(KST) 자동 동기화 배치 활성화 여부 | 생략 시 `CLIMATE_INDEX_SYNC_ENABLED` 값, 그것도 없으면 `false`. `TOUR_CLIMATE_API_KEY` 필요 |
 | `CLIMATE_INDEX_SYNC_ENABLED` | (하위 호환) 위 두 값의 공통 기본값 | 수동 API만 켜려면 `CLIMATE_INDEX_SYNC_API_ENABLED=true`만 설정하고 이 값은 두지 않는다 |
-| `CORS_ALLOWED_ORIGINS` | `/api/**`에 대한 CORS 허용 오리진(콤마 구분) | 생략 시 로컬 정적 서버/Vite 개발 서버용 기본값(5500, 8000, 5173) 사용. 프론트 운영 도메인이 정해지면 배포 시 이 값으로 덮어써야 함 |
+| `CORS_ALLOWED_ORIGINS` | `/api/**`에 대한 CORS 허용 오리진(콤마 구분) | 생략 시 로컬 정적 서버/Vite 개발 서버용 기본값(5500, 8000, 5173) 사용. 운영에서는 EC2 `app.env`에 프론트 도메인(예: `https://tripcastwith.duckdns.org`)을 넣어 덮어써야 함. 기본값을 통째로 대체하므로 로컬 개발 origin도 유지하려면 함께 적을 것. 같은 origin으로 호출해도 프록시가 `X-Forwarded-Proto`를 `http`로 넘기면 CORS 403이 날 수 있음 |
 
 ## Docker로 실행
 

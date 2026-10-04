@@ -161,9 +161,14 @@ TOUR_CLIMATE_API_KEY=<공공데이터포털 API 키>
 JWT_SECRET=<32자 이상 랜덤 문자열>
 ADMIN_USERNAME=<관리자 계정>
 ADMIN_PASSWORD=<관리자 비밀번호>
+CORS_ALLOWED_ORIGINS=https://<이름>.duckdns.org,http://localhost:5173
 EOF
 chmod 600 ~/tripcast/app.env
 ```
+
+`CORS_ALLOWED_ORIGINS`는 기본값(로컬 개발용 localhost)을 통째로 덮어쓰므로, 로컬 개발 origin을 유지하려면 위처럼 콤마로 함께 적는다. 프론트가 same-origin(`/api`)으로 호출하더라도 필요하다. 프록시가 `X-Forwarded-Proto`를 `http`로 넘기면 Spring이 요청을 `http://` 기준으로 보고, `Origin: https://...` 헤더가 붙는 POST/PUT/DELETE를 cross-origin으로 판정해 `403 Invalid CORS request`를 반환하기 때문이다. 프록시가 `https`를 올바르게 전달하면 same-origin으로 인식되지만, 허용 목록에 넣어 두면 어느 경우에나 안전하다.
+
+> `docker run --env-file`은 컨테이너를 만들 때만 파일을 읽는다. `app.env`를 고친 뒤 `docker restart tripcast`로는 반영되지 않으므로, 컨테이너를 다시 만들거나(`docker stop tripcast && docker rm tripcast` 후 `docker run ...`) 배포 워크플로를 다시 실행한다.
 
 ## 6. GitHub Secrets 등록
 
