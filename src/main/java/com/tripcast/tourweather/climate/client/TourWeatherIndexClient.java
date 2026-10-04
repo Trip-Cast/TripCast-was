@@ -80,7 +80,8 @@ public class TourWeatherIndexClient {
             String code = header == null ? "unknown" : header.resultCode();
             String message = header == null ? "응답 헤더 없음" : header.resultMsg();
             throw new TourClimateApiException(
-                    "관광기후지수 API 오류: " + code + " " + message
+                    "관광기후지수 API 오류: " + code + " " + message,
+                    code
             );
         }
 

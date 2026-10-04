@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.tripcast.tourweather.climate.client.TourClimateApiException;
 import com.tripcast.tourweather.climate.client.TourWeatherIndexClient;
 import com.tripcast.tourweather.climate.client.dto.TourClimateApiResponse.Item;
 import com.tripcast.tourweather.climate.domain.RegionClimateIndex;
@@ -65,6 +66,19 @@ public class ClimateIndexSyncService {
                     savedRecords++;
                 }
                 successfulRegions++;
+            } catch (TourClimateApiException exception) {
+                if (exception.isNoData()) {
+                    log.info(
+                            "관광기후지수 데이터 없음. regionId={}",
+                            regionId
+                    );
+                } else {
+                    log.warn(
+                            "관광기후지수 동기화 실패. regionId={}",
+                            regionId,
+                            exception
+                    );
+                }
             } catch (RuntimeException exception) {
                 log.warn(
                         "관광기후지수 동기화 실패. regionId={}",
