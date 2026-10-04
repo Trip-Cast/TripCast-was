@@ -24,7 +24,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RestController
 @RequestMapping("/api/admin")
 @ConditionalOnProperty(
-        name = "app.climate-index-sync.enabled",
+        name = "app.climate-index-sync.api-enabled",
         havingValue = "true"
 )
 public class AdminClimateIndexController {

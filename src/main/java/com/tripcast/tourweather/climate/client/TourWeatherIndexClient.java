@@ -6,19 +6,16 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.tripcast.tourweather.climate.ConditionalOnClimateIndexSync;
 import com.tripcast.tourweather.climate.client.dto.TourClimateApiResponse;
 import com.tripcast.tourweather.climate.client.dto.TourClimateApiResponse.Item;
 
 @Component
-@ConditionalOnProperty(
-        name = "app.climate-index-sync.enabled",
-        havingValue = "true"
-)
+@ConditionalOnClimateIndexSync
 public class TourWeatherIndexClient {
 
     private static final DateTimeFormatter REQUEST_TIME_FORMAT =

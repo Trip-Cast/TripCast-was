@@ -26,10 +26,15 @@ $env:TOUR_CLIMATE_API_KEY="발급받은 일반 인증키 Decoding 값"
 ```
 
 ```properties
-app.climate-index-sync.enabled=true
+# 수동 동기화 API (POST /api/admin/climate-index/sync)
+app.climate-index-sync.api-enabled=true
+# 자동 배치 (둘은 독립적으로 켜고 끈다)
+app.climate-index-sync.scheduler-enabled=true
 ```
 
-배치는 기본적으로 매일 오전 5시(`Asia/Seoul`)에 실행된다. 비활성 상태에서는 외부 API 클라이언트와 스케줄러가 등록되지 않으므로 API 키 없이도 앱과 테스트가 실행된다.
+환경변수는 각각 `CLIMATE_INDEX_SYNC_API_ENABLED`, `CLIMATE_INDEX_SYNC_SCHEDULER_ENABLED`이며, 하위 호환용 `CLIMATE_INDEX_SYNC_ENABLED`는 두 값의 기본값으로만 쓰인다.
+
+배치는 기본적으로 매일 오전 5시(`Asia/Seoul`)에 실행된다. 두 플래그가 모두 꺼진 상태에서는 외부 API 클라이언트와 스케줄러가 등록되지 않으므로 API 키 없이도 앱과 테스트가 실행된다.
 
 CSV의 `지역 아이디`는 읍·면·동 코드가 포함될 수 있다. 배치와 조회에서는 10자리 행정구역 코드의 앞 5자리를 유지하고 뒤 5자리를 `00000`으로 바꿔 관광기후지수 API가 요구하는 시군구 코드로 정규화한다. 예를 들어 `4822051000`은 `4822000000`으로 조회한다.
 
