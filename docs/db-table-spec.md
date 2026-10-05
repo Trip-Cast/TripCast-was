@@ -1,7 +1,7 @@
 # 테이블 명세서 — TripCast 관광코스 날씨/관광기후지수 서비스
 
 `tour_spot`, `tour_course`, `tour_course_stop`은 기존 구현된 테이블이고,
-`region_climate_index`는 관광기후지수 연동을 위해 신규 설계된 테이블이다.
+`region_climate_index`는 관광기후지수 연동을 위해 신규 설계된 테이블이다. `region`은 지역 목록 API(`GET /api/regions`)의 이름 데이터를 담는 테이블이다.
 
 `spot_weather_index`(관광지별 체감온도·자외선지수)는 한때 스키마에 있었지만, 대응하는 공공API 필드가 공개되지 않아 실제로 배치가 채운 적이 없다. Flyway `V3__drop_spot_weather_index.sql`로 삭제했다.
 
@@ -12,6 +12,7 @@ erDiagram
     TOUR_COURSE ||--o{ TOUR_COURSE_STOP : "코스에 속한 정류지"
     TOUR_SPOT ||--o{ TOUR_COURSE_STOP : "관광지가 등장하는 지점"
     TOUR_COURSE_STOP }o..|| REGION_CLIMATE_INDEX : "region_id 정규화 후 논리 연결 (FK 아님)"
+    TOUR_COURSE_STOP }o..|| REGION : "region_id 정규화 후 논리 연결 (FK 아님)"
 
     TOUR_SPOT {
         bigint id PK "관광지 ID"
@@ -44,6 +45,12 @@ erDiagram
         date base_date "기준 날짜"
         decimal score "관광 기후지수 점수"
         varchar grade "기후지수 등급"
+    }
+
+    REGION {
+        varchar region_id PK "시군구 코드(10자리)"
+        varchar name "시군구명"
+        varchar sido_name "시·도명"
     }
 ```
 
@@ -87,6 +94,12 @@ CREATE TABLE region_climate_index (
     score DECIMAL(5, 2) NOT NULL,
     grade VARCHAR(20) NOT NULL,
     CONSTRAINT uk_region_climate_date UNIQUE (region_id, base_date)
+);
+
+CREATE TABLE region (
+    region_id VARCHAR(10) NOT NULL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    sido_name VARCHAR(50) NOT NULL
 );
 ```
 
@@ -174,6 +187,22 @@ CREATE TABLE region_climate_index (
 
 ---
 
+### 5. region (시군구 이름)
+
+**설명**: 시군구 코드와 이름 매핑. 지역 목록 API가 코드에 이름을 붙이는 데 쓴다.
+**데이터 출처**: `src/main/resources/data/regions.csv` — 행정안전부 행정표준코드(법정동코드)의 시군구 이름. 관광지 CSV에 등장하는 정규화 코드 198개만 담는다.
+**갱신 방식**: 앱 시작 시 `RegionDataImporter`가 CSV 기준으로 upsert (`app.region-import.enabled`, 기본 true)
+
+| 컬럼명 | 타입 | PK | FK | NULL | 설명 |
+|---|---|---|---|---|---|
+| region_id | VARCHAR(10) | ● | | N | 정규화된 시군구 코드(앞 5자리 + `00000`) |
+| name | VARCHAR(50) | | | N | 시군구명 (일반구는 `전주시 완산구`처럼 시 이름 포함) |
+| sido_name | VARCHAR(50) | | | N | 시·도명 (`강원특별자치도`, `전북특별자치도` 등 현재 명칭) |
+
+**비고**: 코드는 기상청 관광지수 API(`cityAreaId`)가 쓰는 구 코드 체계(강원 `42…`, 전북 `45…`)를 그대로 쓴다. 이름만 현재 명칭이다. `tour_course_stop`과 FK는 없다.
+
+---
+
 ## 테이블 간 관계 요약
 
 | 관계 | 유형 | 방식 |
@@ -181,3 +210,4 @@ CREATE TABLE region_climate_index (
 | tour_course 1 : N tour_course_stop | 식별관계 | FK (`fk_course_stop_course`) |
 | tour_spot 1 : N tour_course_stop | 식별관계 | FK (`fk_course_stop_spot`) |
 | tour_course_stop N : 1 region_climate_index | 논리관계 | `region_id` 정규화 후 값 매칭 (FK 없음) |
+| tour_course_stop N : 1 region | 논리관계 | `region_id` 정규화 후 값 매칭 (FK 없음) |

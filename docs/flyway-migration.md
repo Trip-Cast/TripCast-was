@@ -6,8 +6,8 @@ TripCast는 `spring.jpa.hibernate.ddl-auto=update`로 스키마를 자동 관리
 
 | 상황 | 동작 |
 |---|---|
-| 완전히 빈 DB(새 개발 환경, CI, Testcontainers) | `V1__create_initial_schema.sql`로 다섯 테이블을 생성하고, `V2__change_climate_score_to_decimal.sql`이 `score`를 `DECIMAL(5,2)`로 변경하고, `V3__drop_spot_weather_index.sql`이 미사용 테이블 `spot_weather_index`를 삭제한다. 최종적으로 네 테이블이 남는다. |
-| 이미 Hibernate `ddl-auto=update`로 테이블이 만들어진 기존 로컬 DB | Flyway가 관리 이력을 모르는 상태이므로, `baseline` 처리를 먼저 해서 "이미 V1 상태까지는 완료된 것"으로 등록한 뒤 V2, V3가 순서대로 적용된다. |
+| 완전히 빈 DB(새 개발 환경, CI, Testcontainers) | `V1__create_initial_schema.sql`로 다섯 테이블을 생성하고, `V2__change_climate_score_to_decimal.sql`이 `score`를 `DECIMAL(5,2)`로 변경하고, `V3__drop_spot_weather_index.sql`이 미사용 테이블 `spot_weather_index`를 삭제한다. `V4__create_region.sql`이 지역 이름 테이블 `region`을 추가한다(데이터는 `regions.csv` importer가 적재). 최종적으로 다섯 테이블이 남는다. |
+| 이미 Hibernate `ddl-auto=update`로 테이블이 만들어진 기존 로컬 DB | Flyway가 관리 이력을 모르는 상태이므로, `baseline` 처리를 먼저 해서 "이미 V1 상태까지는 완료된 것"으로 등록한 뒤 V2, V3, V4가 순서대로 적용된다. |
 
 기존 DB를 처음 Flyway 관리 대상으로 편입할 때만 아래 baseline 절차가 필요하고, 이후로는 새 DB와 동일하게 동작한다.
 
@@ -102,7 +102,7 @@ SHOW TABLES LIKE 'spot_weather_index';
 
 ## 이후 스키마를 바꿀 때 지킬 규칙
 
-- **이미 적용된 마이그레이션 파일(`V1`, `V2`, `V3`)은 절대 수정하지 않는다.** Flyway는 체크섬으로 검증하므로, 이미 실행된 파일을 고치면 다음 배포에서 검증 실패로 앱이 기동되지 않는다.
+- **이미 적용된 마이그레이션 파일(`V1`~`V4`)은 절대 수정하지 않는다.** Flyway는 체크섬으로 검증하므로, 이미 실행된 파일을 고치면 다음 배포에서 검증 실패로 앱이 기동되지 않는다.
 - 스키마를 더 바꿔야 하면 `V4__...`처럼 새 버전 파일을 추가한다.
 - Flyway Community Edition에는 자동 undo(rollback) 기능이 없다. 되돌려야 할 상황이 생기면 새 마이그레이션으로 원상복구하거나, 1단계에서 만든 백업으로 복원한다.
 - `spring.flyway.clean-disabled=true`는 항상 유지한다 — `flyway clean`은 전체 스키마를 삭제하는 명령이라 운영 환경에서 절대 실행하면 안 된다.

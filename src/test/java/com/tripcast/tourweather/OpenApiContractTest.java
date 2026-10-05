@@ -58,6 +58,18 @@ class OpenApiContractTest {
     }
 
     @Test
+    void 지역_목록_API가_OpenAPI에_노출된다() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/regions']").exists())
+                .andExpect(jsonPath(
+                        "$.components.schemas.RegionResponse.required"
+                ).value(org.hamcrest.Matchers.containsInAnyOrder(
+                        "regionId", "name", "sidoName", "displayName"
+                )));
+    }
+
+    @Test
     void 코스_목록_API가_OpenAPI에_노출된다() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())

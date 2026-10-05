@@ -1,0 +1,5 @@
+CREATE TABLE region (
+    region_id VARCHAR(10) NOT NULL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    sido_name VARCHAR(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
