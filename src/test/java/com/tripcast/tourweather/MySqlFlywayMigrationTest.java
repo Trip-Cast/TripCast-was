@@ -38,9 +38,9 @@ class MySqlFlywayMigrationTest {
     private RegionClimateIndexRepository regionClimateIndexRepository;
 
     @Test
-    void 빈_MySQL에서_V1부터_V3까지_모두_성공한다() {
-        assertEquals("3", flyway.info().current().getVersion().getVersion());
-        assertEquals(3, flyway.info().applied().length);
+    void 빈_MySQL에서_V1부터_V4까지_모두_성공한다() {
+        assertEquals("4", flyway.info().current().getVersion().getVersion());
+        assertEquals(4, flyway.info().applied().length);
     }
 
     @Test
