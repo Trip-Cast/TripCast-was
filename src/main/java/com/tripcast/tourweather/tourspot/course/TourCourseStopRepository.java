@@ -1,10 +1,12 @@
 package com.tripcast.tourweather.tourspot.course;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface TourCourseStopRepository
         extends JpaRepository<TourCourseStop, Long> {
@@ -13,13 +15,22 @@ public interface TourCourseStopRepository
 
     List<TourCourseStop> findByCourseIdOrderByCourseOrderAsc(Long courseId);
 
-    Optional<TourCourseStop> findFirstByCourseIdOrderByCourseOrderAsc(
-            Long courseId
+    /**
+     * 여러 코스의 정류지를 관광지와 함께 한 번에 조회한다(목록 API의 N+1 방지).
+     * 코스 ID, 방문 순서 오름차순이라 코스별로 묶으면 첫/마지막 정류지가 바로 나온다.
+     */
+    @Query("""
+            select stop
+            from TourCourseStop stop
+            join fetch stop.tourSpot
+            where stop.course.id in :courseIds
+            order by stop.course.id asc, stop.courseOrder asc
+            """)
+    List<TourCourseStop> findAllWithTourSpotByCourseIds(
+            @Param("courseIds") Collection<Long> courseIds
     );
 
     Optional<TourCourseStop> findFirstByTourSpotIdOrderByIdAsc(Long tourSpotId);
-
-    long countByCourseId(Long courseId);
 
     @Query("""
             select distinct stop.regionId

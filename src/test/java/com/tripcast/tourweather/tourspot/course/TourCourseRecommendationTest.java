@@ -6,7 +6,6 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,16 +52,11 @@ class TourCourseRecommendationTest {
                 noDataCourse
         ));
 
-        when(courseStopRepository.findFirstByCourseIdOrderByCourseOrderAsc(1L))
-                .thenReturn(Optional.of(
-                        stop(lowScoreCourse, spot, "1111051000")
-                ));
-        when(courseStopRepository.findFirstByCourseIdOrderByCourseOrderAsc(2L))
-                .thenReturn(Optional.of(
-                        stop(highScoreCourse, spot, "2611051000")
-                ));
-        when(courseStopRepository.findFirstByCourseIdOrderByCourseOrderAsc(3L))
-                .thenReturn(Optional.of(
+        when(courseStopRepository
+                .findAllWithTourSpotByCourseIds(List.of(1L, 2L, 3L)))
+                .thenReturn(List.of(
+                        stop(lowScoreCourse, spot, "1111051000"),
+                        stop(highScoreCourse, spot, "2611051000"),
                         stop(noDataCourse, spot, "9999051000")
                 ));
 
@@ -89,10 +83,12 @@ class TourCourseRecommendationTest {
 
         when(courseRepository.findAll())
                 .thenReturn(List.of(first, second));
-        when(courseStopRepository.findFirstByCourseIdOrderByCourseOrderAsc(1L))
-                .thenReturn(Optional.of(stop(first, spot, "1111051000")));
-        when(courseStopRepository.findFirstByCourseIdOrderByCourseOrderAsc(2L))
-                .thenReturn(Optional.of(stop(second, spot, "2611051000")));
+        when(courseStopRepository
+                .findAllWithTourSpotByCourseIds(List.of(1L, 2L)))
+                .thenReturn(List.of(
+                        stop(first, spot, "1111051000"),
+                        stop(second, spot, "2611051000")
+                ));
         when(climateIndexService.findLatestOrNull("1111051000"))
                 .thenReturn(climateIndex("1111000000", "0.30", "보통"));
         when(climateIndexService.findLatestOrNull("2611051000"))
@@ -103,6 +99,44 @@ class TourCourseRecommendationTest {
 
         assertEquals(1, result.size());
         assertEquals(2L, result.get(0).courseId());
+    }
+
+    @Test
+    void 대표_관광지의_좌표와_정류지_수를_함께_반환한다() {
+        TourCourse course = course(1L, "TH01");
+        TourSpot firstSpot = new TourSpot("경복궁", 37.5796, 126.9770);
+        TourSpot secondSpot = new TourSpot("남산타워", 37.5512, 126.9882);
+
+        when(courseRepository.findAll()).thenReturn(List.of(course));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of(
+                        stop(course, firstSpot, "1111051000"),
+                        new TourCourseStop(
+                                "SPOT-2", course, secondSpot, "1111051000",
+                                2, 10, "실외", "01", "역사"
+                        )
+                ));
+        when(climateIndexService.findLatestOrNull("1111051000"))
+                .thenReturn(climateIndex("1111000000", "0.30", "보통"));
+
+        CourseRecommendationResponse result =
+                tourCourseService.getRecommendations(10).get(0);
+
+        assertEquals("경복궁", result.representativeSpotName());
+        assertEquals(37.5796, result.representativeLatitude());
+        assertEquals(126.9770, result.representativeLongitude());
+        assertEquals(2L, result.stopCount());
+    }
+
+    @Test
+    void 정류지가_없는_코스는_추천에서_제외한다() {
+        TourCourse course = course(1L, "TH01");
+
+        when(courseRepository.findAll()).thenReturn(List.of(course));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of());
+
+        assertEquals(0, tourCourseService.getRecommendations(10).size());
     }
 
     private TourCourse course(Long id, String sourceCourseId) {
