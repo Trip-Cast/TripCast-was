@@ -44,7 +44,22 @@ class TourCourseControllerTest {
                                 "TH01",
                                 "서울시청",
                                 "역사",
-                                3L
+                                3L,
+                                37.5796,
+                                126.977,
+                                37.5512,
+                                126.9882
+                        ),
+                        new TourCourseSummaryResponse(
+                                2L,
+                                "TH02",
+                                null,
+                                null,
+                                0L,
+                                null,
+                                null,
+                                null,
+                                null
                         )
                 )));
 
@@ -55,7 +70,17 @@ class TourCourseControllerTest {
                         .value("TH01"))
                 .andExpect(jsonPath("$.content[0].representativeSpotName")
                         .value("서울시청"))
-                .andExpect(jsonPath("$.content[0].stopCount").value(3));
+                .andExpect(jsonPath("$.content[0].stopCount").value(3))
+                .andExpect(jsonPath("$.content[0].startLatitude")
+                        .value(37.5796))
+                .andExpect(jsonPath("$.content[0].startLongitude")
+                        .value(126.977))
+                .andExpect(jsonPath("$.content[0].endLatitude")
+                        .value(37.5512))
+                .andExpect(jsonPath("$.content[0].endLongitude")
+                        .value(126.9882))
+                .andExpect(jsonPath("$.content[1].startLatitude").isEmpty())
+                .andExpect(jsonPath("$.content[1].endLongitude").isEmpty());
     }
 
     @Test
@@ -146,6 +171,8 @@ class TourCourseControllerTest {
                         "해운대해수욕장",
                         "해변",
                         3L,
+                        35.1587,
+                        129.1604,
                         new ClimateIndexResponse(
                                 "2611000000",
                                 LocalDate.of(2026, 9, 23),
@@ -157,6 +184,10 @@ class TourCourseControllerTest {
         mockMvc.perform(get("/api/tour-courses/recommendations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].courseId").value(2))
+                .andExpect(jsonPath("$[0].representativeLatitude")
+                        .value(35.1587))
+                .andExpect(jsonPath("$[0].representativeLongitude")
+                        .value(129.1604))
                 .andExpect(jsonPath("$[0].climateIndex.grade")
                         .value("매우좋음"));
     }

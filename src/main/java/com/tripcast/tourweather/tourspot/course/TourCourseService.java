@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,24 +62,71 @@ public class TourCourseService {
                 Sort.by("id").ascending()
         );
 
-        return courseRepository.findAll(pageRequest)
-                .map(this::toSummary);
+        Page<TourCourse> courses = courseRepository.findAll(pageRequest);
+        Map<Long, List<TourCourseStop>> stopsByCourseId =
+                findStopsByCourseId(courses.getContent());
+
+        return courses.map(course -> toSummary(
+                course,
+                stopsByCourseId.getOrDefault(course.getId(), List.of())
+        ));
     }
 
-    private TourCourseSummaryResponse toSummary(TourCourse course) {
-        Optional<TourCourseStop> firstStop = courseStopRepository
-                .findFirstByCourseIdOrderByCourseOrderAsc(course.getId());
-        long stopCount = courseStopRepository.countByCourseId(course.getId());
+    private TourCourseSummaryResponse toSummary(
+            TourCourse course,
+            List<TourCourseStop> stops
+    ) {
+        if (stops.isEmpty()) {
+            return new TourCourseSummaryResponse(
+                    course.getId(),
+                    course.getSourceCourseId(),
+                    null,
+                    null,
+                    0L,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
+
+        TourCourseStop firstStop = stops.get(0);
+        TourCourseStop lastStop = stops.get(stops.size() - 1);
+        TourSpot firstSpot = firstStop.getTourSpot();
+        TourSpot lastSpot = lastStop.getTourSpot();
 
         return new TourCourseSummaryResponse(
                 course.getId(),
                 course.getSourceCourseId(),
-                firstStop.map(stop -> stop.getTourSpot().getName())
-                        .orElse(null),
-                firstStop.map(TourCourseStop::getThemeName)
-                        .orElse(null),
-                stopCount
+                firstSpot.getName(),
+                firstStop.getThemeName(),
+                stops.size(),
+                firstSpot.getLatitude(),
+                firstSpot.getLongitude(),
+                lastSpot.getLatitude(),
+                lastSpot.getLongitude()
         );
+    }
+
+    /**
+     * 코스들의 정류지를 쿼리 한 번으로 가져와 코스별로 묶는다.
+     * 각 리스트는 courseOrder 오름차순이다.
+     */
+    private Map<Long, List<TourCourseStop>> findStopsByCourseId(
+            List<TourCourse> courses
+    ) {
+        if (courses.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> courseIds = courses.stream()
+                .map(TourCourse::getId)
+                .toList();
+
+        return courseStopRepository.findAllWithTourSpotByCourseIds(courseIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        stop -> stop.getCourse().getId()
+                ));
     }
 
     public TourCourseResponse getCourse(Long courseId) {
@@ -113,9 +161,15 @@ public class TourCourseService {
     }
 
     public List<CourseRecommendationResponse> getRecommendations(int limit) {
-        return courseRepository.findAll()
-                .stream()
-                .map(this::toRecommendationOrNull)
+        List<TourCourse> courses = courseRepository.findAll();
+        Map<Long, List<TourCourseStop>> stopsByCourseId =
+                findStopsByCourseId(courses);
+
+        return courses.stream()
+                .map(course -> toRecommendationOrNull(
+                        course,
+                        stopsByCourseId.getOrDefault(course.getId(), List.of())
+                ))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(
                                 (CourseRecommendationResponse response) ->
@@ -126,28 +180,31 @@ public class TourCourseService {
     }
 
     private CourseRecommendationResponse toRecommendationOrNull(
-            TourCourse course
+            TourCourse course,
+            List<TourCourseStop> stops
     ) {
-        return courseStopRepository
-                .findFirstByCourseIdOrderByCourseOrderAsc(course.getId())
-                .map(firstStop -> {
-                    ClimateIndexResponse climateIndex = climateIndexService
-                            .findLatestOrNull(firstStop.getRegionId());
-                    if (climateIndex == null) {
-                        return null;
-                    }
-                    long stopCount = courseStopRepository
-                            .countByCourseId(course.getId());
-                    return new CourseRecommendationResponse(
-                            course.getId(),
-                            course.getSourceCourseId(),
-                            firstStop.getTourSpot().getName(),
-                            firstStop.getThemeName(),
-                            stopCount,
-                            climateIndex
-                    );
-                })
-                .orElse(null);
+        if (stops.isEmpty()) {
+            return null;
+        }
+
+        TourCourseStop firstStop = stops.get(0);
+        ClimateIndexResponse climateIndex = climateIndexService
+                .findLatestOrNull(firstStop.getRegionId());
+        if (climateIndex == null) {
+            return null;
+        }
+
+        TourSpot firstSpot = firstStop.getTourSpot();
+        return new CourseRecommendationResponse(
+                course.getId(),
+                course.getSourceCourseId(),
+                firstSpot.getName(),
+                firstStop.getThemeName(),
+                stops.size(),
+                firstSpot.getLatitude(),
+                firstSpot.getLongitude(),
+                climateIndex
+        );
     }
 
     private TourCourse findCourse(Long courseId) {

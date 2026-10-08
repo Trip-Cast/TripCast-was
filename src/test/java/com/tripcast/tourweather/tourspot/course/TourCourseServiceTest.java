@@ -3,6 +3,10 @@ package com.tripcast.tourweather.tourspot.course;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -96,28 +100,23 @@ class TourCourseServiceTest {
     }
 
     @Test
-    void 코스_목록_조회시_첫_관광지명과_테마_정류지_수를_요약해서_반환한다() {
-        TourCourse course = new TourCourse("TH01");
-        ReflectionTestUtils.setField(course, "id", 1L);
-        TourSpot tourSpot = new TourSpot("서울시청", 37.5665, 126.9780);
-        TourCourseStop firstStop = new TourCourseStop(
-                "1111000001",
-                course,
-                tourSpot,
-                "1111051000",
-                1,
-                30,
-                "실외",
-                "01",
-                "역사"
+    void 코스_목록_조회시_첫_관광지명과_테마_정류지_수_시작_도착_좌표를_반환한다() {
+        TourCourse course = course(1L, "TH01");
+        TourCourseStop first = stop(
+                course, new TourSpot("서울시청", 37.5665, 126.9780), 1, "역사"
+        );
+        TourCourseStop middle = stop(
+                course, new TourSpot("덕수궁", 37.5658, 126.9751), 2, "역사"
+        );
+        TourCourseStop last = stop(
+                course, new TourSpot("남산타워", 37.5512, 126.9882), 3, "전망"
         );
 
         when(courseRepository.findAll(
                 PageRequest.of(0, 20, Sort.by("id").ascending())
         )).thenReturn(new PageImpl<>(List.of(course)));
-        when(courseStopRepository.findFirstByCourseIdOrderByCourseOrderAsc(1L))
-                .thenReturn(Optional.of(firstStop));
-        when(courseStopRepository.countByCourseId(1L)).thenReturn(3L);
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of(first, middle, last));
 
         Page<TourCourseSummaryResponse> result =
                 tourCourseService.searchCourses(0, 20);
@@ -128,7 +127,112 @@ class TourCourseServiceTest {
                 () -> assertEquals("TH01", summary.sourceCourseId()),
                 () -> assertEquals("서울시청", summary.representativeSpotName()),
                 () -> assertEquals("역사", summary.representativeThemeName()),
-                () -> assertEquals(3L, summary.stopCount())
+                () -> assertEquals(3L, summary.stopCount()),
+                () -> assertEquals(37.5665, summary.startLatitude()),
+                () -> assertEquals(126.9780, summary.startLongitude()),
+                () -> assertEquals(37.5512, summary.endLatitude()),
+                () -> assertEquals(126.9882, summary.endLongitude())
+        );
+    }
+
+    @Test
+    void 정류지가_1개면_시작과_도착_좌표가_같다() {
+        TourCourse course = course(1L, "TH01");
+        TourCourseStop only = stop(
+                course, new TourSpot("서울시청", 37.5665, 126.9780), 1, "역사"
+        );
+
+        when(courseRepository.findAll(
+                PageRequest.of(0, 20, Sort.by("id").ascending())
+        )).thenReturn(new PageImpl<>(List.of(course)));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of(only));
+
+        TourCourseSummaryResponse summary = tourCourseService
+                .searchCourses(0, 20).getContent().get(0);
+
+        assertAll(
+                () -> assertEquals(1L, summary.stopCount()),
+                () -> assertEquals(37.5665, summary.startLatitude()),
+                () -> assertEquals(37.5665, summary.endLatitude()),
+                () -> assertEquals(126.9780, summary.startLongitude()),
+                () -> assertEquals(126.9780, summary.endLongitude())
+        );
+    }
+
+    @Test
+    void 정류지가_없는_코스는_이름_테마_좌표가_모두_null이다() {
+        TourCourse course = course(1L, "TH01");
+
+        when(courseRepository.findAll(
+                PageRequest.of(0, 20, Sort.by("id").ascending())
+        )).thenReturn(new PageImpl<>(List.of(course)));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of());
+
+        TourCourseSummaryResponse summary = tourCourseService
+                .searchCourses(0, 20).getContent().get(0);
+
+        assertAll(
+                () -> assertEquals(0L, summary.stopCount()),
+                () -> assertNull(summary.representativeSpotName()),
+                () -> assertNull(summary.representativeThemeName()),
+                () -> assertNull(summary.startLatitude()),
+                () -> assertNull(summary.startLongitude()),
+                () -> assertNull(summary.endLatitude()),
+                () -> assertNull(summary.endLongitude())
+        );
+    }
+
+    @Test
+    void 코스_목록_조회시_정류지는_코스_수와_무관하게_쿼리_한_번으로_가져온다() {
+        TourCourse first = course(1L, "TH01");
+        TourCourse second = course(2L, "TH02");
+        TourSpot spot = new TourSpot("서울시청", 37.5665, 126.9780);
+
+        when(courseRepository.findAll(
+                PageRequest.of(0, 20, Sort.by("id").ascending())
+        )).thenReturn(new PageImpl<>(List.of(first, second)));
+        when(courseStopRepository
+                .findAllWithTourSpotByCourseIds(List.of(1L, 2L)))
+                .thenReturn(List.of(
+                        stop(first, spot, 1, "역사"),
+                        stop(second, spot, 1, "역사"),
+                        stop(second, spot, 2, "역사")
+                ));
+
+        Page<TourCourseSummaryResponse> result =
+                tourCourseService.searchCourses(0, 20);
+
+        assertEquals(1L, result.getContent().get(0).stopCount());
+        assertEquals(2L, result.getContent().get(1).stopCount());
+        verify(courseStopRepository, times(1))
+                .findAllWithTourSpotByCourseIds(anyCollection());
+        verifyNoMoreInteractions(courseStopRepository);
+    }
+
+    private TourCourse course(Long id, String sourceCourseId) {
+        TourCourse course = new TourCourse(sourceCourseId);
+        ReflectionTestUtils.setField(course, "id", id);
+        return course;
+    }
+
+    private TourCourseStop stop(
+            TourCourse course,
+            TourSpot spot,
+            int courseOrder,
+            String themeName
+    ) {
+        return new TourCourseStop(
+                "SPOT-" + course.getId() + "-" + courseOrder,
+                course,
+                spot,
+                "1111051000",
+                courseOrder,
+                30,
+                "실외",
+                "01",
+                themeName
         );
     }
 }
