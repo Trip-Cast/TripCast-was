@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -13,10 +14,15 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -31,6 +37,7 @@ import com.tripcast.tourweather.tourspot.TourSpot;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseSummaryResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseWeatherResponse;
 import com.tripcast.tourweather.weather.WeatherService;
+import com.tripcast.tourweather.weather.dto.WeatherResponse;
 
 @ExtendWith(MockitoExtension.class)
 class TourCourseServiceTest {
@@ -47,8 +54,61 @@ class TourCourseServiceTest {
     @Mock
     private WeatherService weatherService;
 
-    @InjectMocks
     private TourCourseService tourCourseService;
+
+    @BeforeEach
+    void setUp() {
+        // 호출 스레드에서 바로 실행해 결과가 결정적이게 한다. 동시 실행은 별도 테스트에서 검증한다.
+        tourCourseService = serviceWith(Runnable::run);
+    }
+
+    private TourCourseService serviceWith(Executor weatherExecutor) {
+        return new TourCourseService(
+                courseRepository,
+                courseStopRepository,
+                climateIndexService,
+                weatherService,
+                weatherExecutor
+        );
+    }
+
+    @Test
+    void 서로_다른_격자는_동시에_조회한다() {
+        TourCourse course = course(1L, "TH01");
+        TourSpot seoul = new TourSpot("서울시청", 37.5665, 126.9780);
+        TourSpot jeju = new TourSpot("제주시청", 33.4996, 126.5312);
+        WeatherResponse weather =
+                new WeatherResponse("20260920", "1500", 24.0, 20, "맑음");
+        // 두 호출이 동시에 진행 중이어야만 래치가 풀린다. 순차 호출이면 시간 초과로 실패한다.
+        CountDownLatch bothInFlight = new CountDownLatch(2);
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of(
+                        stop(course, seoul, 1, "역사"),
+                        stop(course, jeju, 2, "역사")
+                ));
+        when(weatherService.getWeather(anyInt(), anyInt())).thenAnswer(call -> {
+            bothInFlight.countDown();
+            if (!bothInFlight.await(3, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시에 호출되지 않았다");
+            }
+            return weather;
+        });
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            TourCourseWeatherResponse result =
+                    serviceWith(pool).getCourseWeather(1L);
+
+            assertAll(
+                    () -> assertEquals(weather, result.stops().get(0).weather()),
+                    () -> assertEquals(weather, result.stops().get(1).weather())
+            );
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 
     @Test
     void 동네예보가_실패해도_지수를_포함한_부분_응답을_반환한다() {
@@ -74,7 +134,7 @@ class TourCourseServiceTest {
 
         when(courseRepository.findById(1L))
                 .thenReturn(Optional.of(course));
-        when(courseStopRepository.findByCourseIdOrderByCourseOrderAsc(1L))
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
                 .thenReturn(List.of(stop));
         when(climateIndexService.findLatestOrNull("1111000000"))
                 .thenReturn(climateIndex);
@@ -96,6 +156,41 @@ class TourCourseServiceTest {
                         result.stops().get(0).spot().regionId()
                 ),
                 () -> assertNull(result.stops().get(0).weather())
+        );
+    }
+
+    @Test
+    void 같은_격자의_정류지는_동네예보를_한_번만_조회한다() {
+        TourCourse course = course(1L, "TH01");
+        // 서울시청과 덕수궁은 같은 기상청 격자(60,127), 제주시청은 다른 격자
+        TourSpot cityHall = new TourSpot("서울시청", 37.5665, 126.9780);
+        TourSpot deoksugung = new TourSpot("덕수궁", 37.5658, 126.9751);
+        TourSpot jeju = new TourSpot("제주시청", 33.4996, 126.5312);
+        WeatherResponse seoul =
+                new WeatherResponse("20260920", "1500", 24.0, 20, "맑음");
+        WeatherResponse jejuWeather =
+                new WeatherResponse("20260920", "1500", 26.0, 30, "흐림");
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(List.of(1L)))
+                .thenReturn(List.of(
+                        stop(course, cityHall, 1, "역사"),
+                        stop(course, deoksugung, 2, "역사"),
+                        stop(course, jeju, 3, "역사")
+                ));
+        when(weatherService.getWeather(60, 127)).thenReturn(seoul);
+        when(weatherService.getWeather(53, 38)).thenReturn(jejuWeather);
+
+        TourCourseWeatherResponse result =
+                tourCourseService.getCourseWeather(1L);
+
+        assertAll(
+                () -> assertEquals(seoul, result.stops().get(0).weather()),
+                () -> assertEquals(seoul, result.stops().get(1).weather()),
+                () -> assertEquals(jejuWeather, result.stops().get(2).weather()),
+                () -> verify(weatherService, times(1)).getWeather(60, 127),
+                () -> verify(weatherService, times(1)).getWeather(53, 38),
+                () -> verify(weatherService, times(2)).getWeather(anyInt(), anyInt())
         );
     }
 
