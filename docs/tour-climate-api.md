@@ -59,6 +59,7 @@ API 활용신청 승인과 키가 준비된 환경에서 다음 테스트를 실
 | GET | `/api/tour-courses/{courseId}` | 코스와 관광지 목록 |
 | GET | `/api/tour-courses/{courseId}/weather` | 관광지별 동네예보와 지역 지수 |
 | GET | `/api/tour-courses/recommendations?limit=10` | 관광기후지수가 높은 순으로 코스 추천 |
+| GET | `/api/tour-spots/{id}/courses` | 관광지가 포함된 코스 목록(배열, 페이지네이션 없음, `courseId` 오름차순). 코스 요약에 해당 관광지의 코스 내 방문 순서 `spotCourseOrder`가 붙는다. 관광지가 없으면 404, 코스가 없으면 `[]`, id가 0 이하·비숫자면 400 |
 
 기간 조회는 DB에 데이터가 있는 날짜만 반환한다. 코스 통합 조회 중 한 관광지의 동네예보 호출이 실패하면 해당 관광지의 `weather`만 `null`이 되고 나머지 코스 정보와 관광기후지수는 반환된다.
 

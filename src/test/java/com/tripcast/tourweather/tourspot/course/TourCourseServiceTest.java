@@ -30,6 +30,7 @@ import com.tripcast.tourweather.climate.dto.ClimateIndexResponse;
 import com.tripcast.tourweather.tourspot.TourSpot;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseSummaryResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseWeatherResponse;
+import com.tripcast.tourweather.tourspot.dto.TourSpotCourseResponse;
 import com.tripcast.tourweather.weather.WeatherService;
 
 @ExtendWith(MockitoExtension.class)
@@ -209,6 +210,98 @@ class TourCourseServiceTest {
         verify(courseStopRepository, times(1))
                 .findAllWithTourSpotByCourseIds(anyCollection());
         verifyNoMoreInteractions(courseStopRepository);
+    }
+
+    @Test
+    void 관광지가_속한_코스를_요약과_방문_순서로_반환한다() {
+        TourCourse first = course(1L, "TH01");
+        TourCourse second = course(3L, "TH03");
+        TourSpot seoul = new TourSpot("서울시청", 37.5665, 126.9780);
+        TourSpot deoksu = new TourSpot("덕수궁", 37.5658, 126.9751);
+        TourSpot namsan = new TourSpot("남산타워", 37.5512, 126.9882);
+
+        when(courseStopRepository.findCourseOrdersByTourSpotId(10L))
+                .thenReturn(List.of(
+                        new SpotCourseOrder(1L, 2),
+                        new SpotCourseOrder(3L, 1)
+                ));
+        when(courseRepository.findAllById(List.of(1L, 3L)))
+                .thenReturn(List.of(second, first));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(anyCollection()))
+                .thenReturn(List.of(
+                        stop(first, seoul, 1, "역사"),
+                        stop(first, deoksu, 2, "역사"),
+                        stop(first, namsan, 3, "전망"),
+                        stop(second, deoksu, 1, "문화")
+                ));
+
+        List<TourSpotCourseResponse> result =
+                tourCourseService.findCoursesByTourSpotId(10L);
+
+        assertEquals(2, result.size());
+        TourSpotCourseResponse firstResult = result.get(0);
+        TourSpotCourseResponse secondResult = result.get(1);
+        assertAll(
+                () -> assertEquals(1L, firstResult.courseId()),
+                () -> assertEquals("TH01", firstResult.sourceCourseId()),
+                () -> assertEquals("서울시청", firstResult.representativeSpotName()),
+                () -> assertEquals("역사", firstResult.representativeThemeName()),
+                () -> assertEquals(3L, firstResult.stopCount()),
+                () -> assertEquals(37.5665, firstResult.startLatitude()),
+                () -> assertEquals(126.9780, firstResult.startLongitude()),
+                () -> assertEquals(37.5512, firstResult.endLatitude()),
+                () -> assertEquals(126.9882, firstResult.endLongitude()),
+                () -> assertEquals(2, firstResult.spotCourseOrder()),
+                () -> assertEquals(3L, secondResult.courseId()),
+                () -> assertEquals("덕수궁", secondResult.representativeSpotName()),
+                () -> assertEquals(1L, secondResult.stopCount()),
+                () -> assertEquals(1, secondResult.spotCourseOrder())
+        );
+    }
+
+    @Test
+    void 코스가_없는_관광지는_빈_목록을_반환하고_추가_조회를_하지_않는다() {
+        when(courseStopRepository.findCourseOrdersByTourSpotId(10L))
+                .thenReturn(List.of());
+
+        assertEquals(List.of(), tourCourseService.findCoursesByTourSpotId(10L));
+
+        verifyNoMoreInteractions(courseRepository);
+        verify(courseStopRepository, times(1))
+                .findCourseOrdersByTourSpotId(10L);
+        verifyNoMoreInteractions(courseStopRepository);
+    }
+
+    @Test
+    void 관광지의_코스_조회는_코스_수와_무관하게_쿼리가_고정된다() {
+        TourCourse first = course(1L, "TH01");
+        TourCourse second = course(2L, "TH02");
+        TourCourse third = course(3L, "TH03");
+        TourSpot spot = new TourSpot("서울시청", 37.5665, 126.9780);
+
+        when(courseStopRepository.findCourseOrdersByTourSpotId(10L))
+                .thenReturn(List.of(
+                        new SpotCourseOrder(1L, 1),
+                        new SpotCourseOrder(2L, 1),
+                        new SpotCourseOrder(3L, 1)
+                ));
+        when(courseRepository.findAllById(List.of(1L, 2L, 3L)))
+                .thenReturn(List.of(first, second, third));
+        when(courseStopRepository.findAllWithTourSpotByCourseIds(anyCollection()))
+                .thenReturn(List.of(
+                        stop(first, spot, 1, "역사"),
+                        stop(second, spot, 1, "역사"),
+                        stop(third, spot, 1, "역사")
+                ));
+
+        assertEquals(3, tourCourseService.findCoursesByTourSpotId(10L).size());
+
+        verify(courseRepository, times(1)).findAllById(anyCollection());
+        verify(courseStopRepository, times(1))
+                .findAllWithTourSpotByCourseIds(anyCollection());
+        verify(courseStopRepository, times(1))
+                .findCourseOrdersByTourSpotId(10L);
+        verifyNoMoreInteractions(courseRepository, courseStopRepository);
     }
 
     private TourCourse course(Long id, String sourceCourseId) {

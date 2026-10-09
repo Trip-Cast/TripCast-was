@@ -79,6 +79,32 @@ class OpenApiContractTest {
     }
 
     @Test
+    void 관광지_포함_코스_API가_OpenAPI에_노출된다() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.paths['/api/tour-spots/{id}/courses'].get.responses['200']"
+                                + ".content['*/*'].schema.items.$ref"
+                ).value("#/components/schemas/TourSpotCourseResponse"))
+                .andExpect(jsonPath(
+                        "$.components.schemas.TourSpotCourseResponse.required"
+                ).value(org.hamcrest.Matchers.containsInAnyOrder(
+                        "courseId", "sourceCourseId",
+                        "representativeSpotName", "representativeThemeName",
+                        "stopCount", "startLatitude", "startLongitude",
+                        "endLatitude", "endLongitude", "spotCourseOrder"
+                )))
+                .andExpect(jsonPath(
+                        "$.components.schemas.TourSpotCourseResponse"
+                                + ".properties.representativeSpotName.type"
+                ).value(org.hamcrest.Matchers.hasItems("string", "null")))
+                .andExpect(jsonPath(
+                        "$.components.schemas.TourSpotCourseResponse"
+                                + ".properties.spotCourseOrder.type"
+                ).value("integer"));
+    }
+
+    @Test
     void 인증_및_관리자_API가_OpenAPI에_노출된다() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
