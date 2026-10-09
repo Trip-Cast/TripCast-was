@@ -61,6 +61,37 @@ API 활용신청 승인과 키가 준비된 환경에서 다음 테스트를 실
 | GET | `/api/tour-courses/recommendations?limit=10` | 관광기후지수가 높은 순으로 코스 추천 |
 | GET | `/api/tour-spots/{id}/courses` | 관광지가 포함된 코스 목록(배열, 페이지네이션 없음, `courseId` 오름차순). 코스 요약에 해당 관광지의 코스 내 방문 순서 `spotCourseOrder`가 붙는다. 관광지가 없으면 404, 코스가 없으면 `[]`, id가 0 이하·비숫자면 400 |
 
+### 코스 상세 화면 호출 방식
+
+코스 상세 화면은 `/api/tour-courses/{courseId}`(DB 조회만, 수백 ms 이내)와 `/api/tour-courses/{courseId}/weather`(기상청 호출 포함, 첫 요청은 수 초 걸릴 수 있음)를 **나눠서 부르는 것을 권장**한다. 상세를 먼저 그려 화면을 띄우고, 날씨는 도착하는 대로 채운다. 날씨가 느리거나 실패해도 코스 정보는 보인다.
+
+```js
+const base = '/api/tour-courses/318';
+
+// 1) 코스·관광지 목록은 바로 그린다.
+const course = await fetch(base).then(r => r.json());
+renderCourse(course);
+
+// 2) 날씨는 기다리지 않고 따로 불러 채운다. 타임아웃/실패는 날씨 영역만 대체 문구로 처리한다.
+const ctrl = new AbortController();
+const timer = setTimeout(() => ctrl.abort(), 15000);
+fetch(`${base}/weather`, { signal: ctrl.signal })
+  .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+  .then(w => renderWeather(w.stops))   // stops[i].weather 가 null 일 수 있다
+  .catch(() => renderWeatherUnavailable())
+  .finally(() => clearTimeout(timer));
+```
+
+- `weather`는 정류지별로 `null`일 수 있으니 반드시 null 처리를 한다.
+- `/weather` 응답의 `stops[].spot`은 상세 응답의 `stops[].spot`과 같은 형태라, `stopId`로 매칭해 날씨만 덧붙이면 된다.
+
+### 응답 시간 관련 서버 동작
+
+- 동네예보는 기상청 격자(nx, ny)별로 30분간 캐시한다(`weather.cache.ttl-minutes`). 실패한 조회는 캐시하지 않는다.
+- 한 코스 안에서 같은 격자에 속한 정류지는 기상청을 한 번만 호출하고, 서로 다른 격자는 동시에 호출한다. 동시 호출 수는 전용 스레드풀 크기(`weather.parallelism`, 기본 4)가 상한이라 요청이 몰려도 기상청에는 그 이상 동시에 나가지 않는다.
+- 기상청 호출은 연결 3초·읽기 5초 타임아웃이 있다(`weather.api.connect-timeout`, `weather.api.read-timeout`). 초과하면 해당 정류지의 `weather`만 `null`이 된다.
+- `/weather`는 기상청 호출 동안 DB 커넥션을 잡지 않는다(트랜잭션 밖에서 호출, `spring.jpa.open-in-view=false`).
+
 기간 조회는 DB에 데이터가 있는 날짜만 반환한다. 코스 통합 조회 중 한 관광지의 동네예보 호출이 실패하면 해당 관광지의 `weather`만 `null`이 되고 나머지 코스 정보와 관광기후지수는 반환된다.
 
 코스 추천은 각 코스의 **첫 번째 관광지가 속한 지역**의 관광기후지수만 기준으로 삼는다(코스 전체 경로의 평균이 아님). 그 지역에 저장된 지수가 없는 코스는 추천 목록에서 제외된다.

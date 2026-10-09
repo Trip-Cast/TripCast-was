@@ -2,6 +2,7 @@ package com.tripcast.tourweather.weather;
 
 import java.util.List;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import com.tripcast.tourweather.weather.client.KmaWeatherClient;
@@ -18,6 +19,11 @@ public class WeatherService {
                 this.kmaWeatherClient = kmaWeatherClient;
         }
 
+        // 격자(nx, ny)별로 캐시한다. 예외는 캐시되지 않고, sync=true라 같은 격자의 동시 요청은 기상청을 한 번만 호출한다.
+        @Cacheable(
+                        cacheNames = WeatherCacheConfig.WEATHER_CACHE,
+                        key = "#nx + ':' + #ny",
+                        sync = true)
         public WeatherResponse getWeather(
                         int nx,
                         int ny) {

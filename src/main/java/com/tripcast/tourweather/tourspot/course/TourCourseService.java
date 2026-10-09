@@ -2,14 +2,18 @@ package com.tripcast.tourweather.tourspot.course;
 
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.tripcast.tourweather.climate.ClimateIndexService;
 import com.tripcast.tourweather.climate.dto.ClimateIndexResponse;
-import com.tripcast.tourweather.climate.util.ClimateRegionIdNormalizer;
 import com.tripcast.tourweather.tourspot.TourSpot;
 import com.tripcast.tourweather.tourspot.course.dto.CourseRecommendationResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseResponse;
@@ -27,13 +30,13 @@ import com.tripcast.tourweather.tourspot.course.dto.TourCourseStopWeatherRespons
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseSummaryResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseWeatherResponse;
 import com.tripcast.tourweather.tourspot.dto.TourSpotCourseResponse;
+import com.tripcast.tourweather.weather.WeatherExecutorConfig;
 import com.tripcast.tourweather.weather.WeatherService;
 import com.tripcast.tourweather.weather.dto.WeatherResponse;
 import com.tripcast.tourweather.weather.util.GridCoordinate;
 import com.tripcast.tourweather.weather.util.LatLonToGridConverter;
 
 @Service
-@Transactional(readOnly = true)
 public class TourCourseService {
 
     private static final Logger log =
@@ -43,19 +46,24 @@ public class TourCourseService {
     private final TourCourseStopRepository courseStopRepository;
     private final ClimateIndexService climateIndexService;
     private final WeatherService weatherService;
+    private final Executor weatherExecutor;
 
     public TourCourseService(
             TourCourseRepository courseRepository,
             TourCourseStopRepository courseStopRepository,
             ClimateIndexService climateIndexService,
-            WeatherService weatherService
+            WeatherService weatherService,
+            @Qualifier(WeatherExecutorConfig.WEATHER_EXECUTOR)
+            Executor weatherExecutor
     ) {
         this.courseRepository = courseRepository;
         this.courseStopRepository = courseStopRepository;
         this.climateIndexService = climateIndexService;
         this.weatherService = weatherService;
+        this.weatherExecutor = weatherExecutor;
     }
 
+    @Transactional(readOnly = true)
     public Page<TourCourseSummaryResponse> searchCourses(int page, int size) {
         PageRequest pageRequest = PageRequest.of(
                 page,
@@ -78,6 +86,7 @@ public class TourCourseService {
      * 관광지 존재 여부는 호출하는 쪽에서 확인한다.
      * 쿼리는 코스 수와 무관하게 3번이다(코스별 방문 순서, 코스, 정류지).
      */
+    @Transactional(readOnly = true)
     public List<TourSpotCourseResponse> findCoursesByTourSpotId(
             Long tourSpotId
     ) {
@@ -168,6 +177,7 @@ public class TourCourseService {
                 ));
     }
 
+    @Transactional(readOnly = true)
     public TourCourseResponse getCourse(Long courseId) {
         TourCourse course = findCourse(courseId);
         List<TourCourseStopResponse> stops = findStops(courseId)
@@ -182,14 +192,30 @@ public class TourCourseService {
         );
     }
 
+    /**
+     * 의도적으로 클래스 단위 트랜잭션을 걸지 않는다. 기상청 호출은 수 초가 걸릴 수 있어,
+     * 트랜잭션(=DB 커넥션) 안에서 호출하면 동시 요청이 커넥션 풀을 고갈시킨다.
+     * DB 조회는 각 리포지토리 호출의 짧은 트랜잭션으로 끝내고, 정류지는 관광지까지
+     * 한 번에 fetch join 해 두므로 이후 날씨 호출 중에는 DB에 접근하지 않는다.
+     */
     public TourCourseWeatherResponse getCourseWeather(Long courseId) {
         TourCourse course = findCourse(courseId);
         Map<String, Optional<ClimateIndexResponse>> climateByRegion =
                 new HashMap<>();
 
-        List<TourCourseStopWeatherResponse> stops = findStops(courseId)
+        List<TourCourseStopResponse> spots = findStops(courseId)
                 .stream()
-                .map(stop -> toWeatherResponse(stop, climateByRegion))
+                .map(TourCourseStopResponse::from)
+                .toList();
+        Map<GridCoordinate, Optional<WeatherResponse>> weatherByGrid =
+                fetchWeatherByGrid(courseId, spots);
+
+        List<TourCourseStopWeatherResponse> stops = spots.stream()
+                .map(spot -> toWeatherResponse(
+                        spot,
+                        climateByRegion,
+                        weatherByGrid
+                ))
                 .toList();
 
         return new TourCourseWeatherResponse(
@@ -199,6 +225,7 @@ public class TourCourseService {
         );
     }
 
+    @Transactional(readOnly = true)
     public List<CourseRecommendationResponse> getRecommendations(int limit) {
         List<TourCourse> courses = courseRepository.findAll();
         Map<Long, List<TourCourseStop>> stopsByCourseId =
@@ -253,47 +280,102 @@ public class TourCourseService {
 
     private List<TourCourseStop> findStops(Long courseId) {
         return courseStopRepository
-                .findByCourseIdOrderByCourseOrderAsc(courseId);
+                .findAllWithTourSpotByCourseIds(List.of(courseId));
     }
 
     private TourCourseStopWeatherResponse toWeatherResponse(
-            TourCourseStop stop,
-            Map<String, Optional<ClimateIndexResponse>> climateByRegion
+            TourCourseStopResponse spot,
+            Map<String, Optional<ClimateIndexResponse>> climateByRegion,
+            Map<GridCoordinate, Optional<WeatherResponse>> weatherByGrid
     ) {
-        String climateRegionId = ClimateRegionIdNormalizer.normalize(
-                stop.getRegionId()
-        );
         Optional<ClimateIndexResponse> climateIndex = climateByRegion
                 .computeIfAbsent(
-                        climateRegionId,
+                        spot.regionId(),
                         regionId -> Optional.ofNullable(
                                 climateIndexService.findLatestOrNull(regionId)
                         )
                 );
 
+        GridCoordinate grid = toGridOrNull(spot);
+        WeatherResponse weather = grid == null
+                ? null
+                : weatherByGrid.getOrDefault(grid, Optional.empty())
+                        .orElse(null);
+
         return new TourCourseStopWeatherResponse(
-                TourCourseStopResponse.from(stop),
+                spot,
                 climateIndex.orElse(null),
-                getWeatherOrNull(stop)
+                weather
         );
     }
 
-    private WeatherResponse getWeatherOrNull(TourCourseStop stop) {
-        TourSpot tourSpot = stop.getTourSpot();
+    /**
+     * 같은 기상청 격자(5km)에 속한 정류지는 예보가 같으므로 격자당 한 번만 조회하고,
+     * 서로 다른 격자는 weatherExecutor에서 동시에 조회한다. 어떤 격자가 실패해도
+     * 그 격자에 속한 정류지의 weather만 null이 된다.
+     */
+    private Map<GridCoordinate, Optional<WeatherResponse>> fetchWeatherByGrid(
+            Long courseId,
+            List<TourCourseStopResponse> spots
+    ) {
+        Map<GridCoordinate, TourCourseStopResponse> firstSpotByGrid =
+                new LinkedHashMap<>();
+        for (TourCourseStopResponse spot : spots) {
+            GridCoordinate grid = toGridOrNull(spot);
+            if (grid != null) {
+                firstSpotByGrid.putIfAbsent(grid, spot);
+            }
+        }
+
+        Map<GridCoordinate, CompletableFuture<Optional<WeatherResponse>>> futures =
+                new LinkedHashMap<>();
+        firstSpotByGrid.forEach((grid, spot) -> futures.put(
+                grid,
+                CompletableFuture.supplyAsync(
+                        () -> fetchWeather(courseId, spot, grid),
+                        weatherExecutor
+                )
+        ));
+
+        Map<GridCoordinate, Optional<WeatherResponse>> result =
+                new HashMap<>();
+        futures.forEach((grid, future) -> result.put(grid, future.join()));
+        return result;
+    }
+
+    private GridCoordinate toGridOrNull(TourCourseStopResponse spot) {
         try {
-            GridCoordinate grid = LatLonToGridConverter.convert(
-                    tourSpot.getLatitude(),
-                    tourSpot.getLongitude()
+            return LatLonToGridConverter.convert(
+                    spot.latitude(),
+                    spot.longitude()
             );
-            return weatherService.getWeather(grid.nx(), grid.ny());
         } catch (RuntimeException exception) {
             log.warn(
-                    "코스 관광지 동네예보 조회 실패. courseId={}, tourSpotId={}",
-                    stop.getCourse().getId(),
-                    tourSpot.getId(),
+                    "코스 관광지 격자 변환 실패. tourSpotId={}",
+                    spot.tourSpotId(),
                     exception
             );
             return null;
+        }
+    }
+
+    private Optional<WeatherResponse> fetchWeather(
+            Long courseId,
+            TourCourseStopResponse spot,
+            GridCoordinate grid
+    ) {
+        try {
+            return Optional.of(weatherService.getWeather(grid.nx(), grid.ny()));
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "코스 관광지 동네예보 조회 실패. courseId={}, tourSpotId={}, nx={}, ny={}",
+                    courseId,
+                    spot.tourSpotId(),
+                    grid.nx(),
+                    grid.ny(),
+                    exception
+            );
+            return Optional.empty();
         }
     }
 }
