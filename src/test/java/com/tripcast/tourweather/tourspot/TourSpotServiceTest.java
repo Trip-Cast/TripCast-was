@@ -25,7 +25,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import com.tripcast.tourweather.climate.ClimateIndexService;
+import com.tripcast.tourweather.tourspot.course.TourCourseService;
 import com.tripcast.tourweather.tourspot.course.TourCourseStopRepository;
+import com.tripcast.tourweather.tourspot.dto.TourSpotCourseResponse;
 import com.tripcast.tourweather.tourspot.dto.TourSpotResponse;
 import com.tripcast.tourweather.tourspot.dto.TourSpotWeatherResponse;
 import com.tripcast.tourweather.weather.WeatherService;
@@ -45,6 +47,9 @@ class TourSpotServiceTest {
 
     @Mock
     private ClimateIndexService climateIndexService;
+
+    @Mock
+    private TourCourseService tourCourseService;
 
     @InjectMocks
     private TourSpotService tourSpotService;
@@ -150,5 +155,29 @@ class TourSpotServiceTest {
                 "관광지를 찾을 수 없습니다: 999",
                 exception.getMessage());
         verifyNoInteractions(weatherService);
+    }
+
+    @Test
+    void 관광지가_포함된_코스를_코스_서비스에서_조회한다() {
+        TourSpotCourseResponse course = new TourSpotCourseResponse(
+                1L, "TH01", "서울시청", "역사", 3L,
+                37.5665, 126.9780, 37.5512, 126.9882, 2);
+
+        when(tourSpotRepository.existsById(1L)).thenReturn(true);
+        when(tourCourseService.findCoursesByTourSpotId(1L))
+                .thenReturn(List.of(course));
+
+        assertEquals(List.of(course), tourSpotService.getCourses(1L));
+    }
+
+    @Test
+    void 존재하지_않는_관광지의_코스를_조회하면_예외가_발생한다() {
+        when(tourSpotRepository.existsById(999L)).thenReturn(false);
+
+        assertThrows(
+                TourSpotNotFoundException.class,
+                () -> tourSpotService.getCourses(999L));
+
+        verifyNoInteractions(tourCourseService);
     }
 }

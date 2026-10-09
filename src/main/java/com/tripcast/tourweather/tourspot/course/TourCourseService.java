@@ -29,6 +29,7 @@ import com.tripcast.tourweather.tourspot.course.dto.TourCourseStopResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseStopWeatherResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseSummaryResponse;
 import com.tripcast.tourweather.tourspot.course.dto.TourCourseWeatherResponse;
+import com.tripcast.tourweather.tourspot.dto.TourSpotCourseResponse;
 import com.tripcast.tourweather.weather.WeatherExecutorConfig;
 import com.tripcast.tourweather.weather.WeatherService;
 import com.tripcast.tourweather.weather.dto.WeatherResponse;
@@ -78,6 +79,45 @@ public class TourCourseService {
                 course,
                 stopsByCourseId.getOrDefault(course.getId(), List.of())
         ));
+    }
+
+    /**
+     * 관광지를 포함하는 코스를 courseId 오름차순으로 반환한다.
+     * 관광지 존재 여부는 호출하는 쪽에서 확인한다.
+     * 쿼리는 코스 수와 무관하게 3번이다(코스별 방문 순서, 코스, 정류지).
+     */
+    @Transactional(readOnly = true)
+    public List<TourSpotCourseResponse> findCoursesByTourSpotId(
+            Long tourSpotId
+    ) {
+        List<SpotCourseOrder> spotOrders = courseStopRepository
+                .findCourseOrdersByTourSpotId(tourSpotId);
+        if (spotOrders.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> courseIds = spotOrders.stream()
+                .map(SpotCourseOrder::courseId)
+                .toList();
+        Map<Long, TourCourse> coursesById = courseRepository
+                .findAllById(courseIds)
+                .stream()
+                .collect(Collectors.toMap(TourCourse::getId, course -> course));
+        Map<Long, List<TourCourseStop>> stopsByCourseId =
+                findStopsByCourseId(List.copyOf(coursesById.values()));
+
+        return spotOrders.stream()
+                .map(spotOrder -> TourSpotCourseResponse.of(
+                        toSummary(
+                                coursesById.get(spotOrder.courseId()),
+                                stopsByCourseId.getOrDefault(
+                                        spotOrder.courseId(),
+                                        List.of()
+                                )
+                        ),
+                        spotOrder.courseOrder()
+                ))
+                .toList();
     }
 
     private TourCourseSummaryResponse toSummary(

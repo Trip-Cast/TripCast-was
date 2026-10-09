@@ -32,6 +32,24 @@ public interface TourCourseStopRepository
 
     Optional<TourCourseStop> findFirstByTourSpotIdOrderByIdAsc(Long tourSpotId);
 
+    /**
+     * 관광지가 속한 코스를 코스 ID 오름차순으로, 코스당 한 건씩 조회한다.
+     * 같은 관광지가 한 코스에 여러 번 나오면 가장 앞선 방문 순서만 남는다.
+     */
+    @Query("""
+            select new com.tripcast.tourweather.tourspot.course.SpotCourseOrder(
+                stop.course.id,
+                min(stop.courseOrder)
+            )
+            from TourCourseStop stop
+            where stop.tourSpot.id = :tourSpotId
+            group by stop.course.id
+            order by stop.course.id asc
+            """)
+    List<SpotCourseOrder> findCourseOrdersByTourSpotId(
+            @Param("tourSpotId") Long tourSpotId
+    );
+
     @Query("""
             select distinct stop.regionId
             from TourCourseStop stop
