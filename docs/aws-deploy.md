@@ -1,5 +1,18 @@
 # AWS 배포 가이드 (EC2 + RDS + GitHub Actions)
 
+> **⚠️ 현재 운영 중단 상태 (2026-10-17 기준)**
+>
+> AWS 청구 금액이 늘어나 이 문서의 리소스(EC2, RDS, ECR, EBS)를 모두 삭제했다. 따라서 지금은 AWS에 배포된 서비스가 없고, `main`에 push해도 자동 배포는 실행되지 않는다([deploy.yml](../.github/workflows/deploy.yml)의 트리거를 `workflow_dispatch`로 바꿔 두었다).
+>
+> 아래 내용은 **다시 배포할 때 참고하는 기록**이다. 재배포하려면 다음을 순서대로 한다.
+>
+> 1. 이 문서의 1~5단계로 AWS 리소스를 다시 만든다.
+> 2. GitHub Secrets를 새 값으로 등록한다(6단계).
+> 3. `deploy.yml`의 `on:`을 주석으로 남겨 둔 원래 `workflow_run` 트리거로 되돌린다.
+> 4. 최초 배포 확인(7단계)과 HTTPS 연결(8단계)을 진행한다.
+>
+> 비용을 관리하려면 재배포 전에 AWS Budgets에서 월 예산 알림(예: $5)을 먼저 걸어 둔다. 프리티어가 끝나면 EC2, RDS, 퍼블릭 IPv4 주소에 요금이 발생한다.
+
 TripCast를 AWS에 배포하는 방법을 정리한다. 구성은 다음과 같다.
 
 ```
@@ -305,3 +318,9 @@ aws ec2 revoke-security-group-ingress --group-id "$EC2_SG_ID" --protocol tcp --p
 - `db.t3.micro` + `t3.micro`는 프리티어 대상이지만 계정의 프리티어 사용 기간을 확인할 것.
 - 사용하지 않을 때는 `aws ec2 stop-instances`, `aws rds stop-db-instance`로 멈춰서 과금을 줄일 수 있다(RDS는 최대 7일까지만 정지 유지, 이후 자동 재시작됨).
 - 리소스를 완전히 정리하려면 EC2 인스턴스 종료 → RDS 인스턴스 삭제(최종 스냅샷 여부 선택) → ECR 리포지토리 삭제 → 보안 그룹/IAM 역할 삭제 순으로 진행한다.
+- 인스턴스를 **중지**만 해서는 요금이 완전히 멈추지 않는다. EBS 볼륨, Elastic IP(연결되지 않은 경우), 퍼블릭 IPv4 주소에는 계속 요금이 붙는다. 쓰지 않을 때는 종료(terminate)하는 편이 낫다.
+- 정리한 뒤에는 다음을 확인한다.
+  - `aws ec2 describe-instances`, `describe-volumes`, `describe-addresses`로 남은 인스턴스, 볼륨, Elastic IP가 없는지 본다(`--region ap-northeast-2`).
+  - Billing → Cost Explorer에서 서비스별 요금이 0으로 떨어졌는지 하루 이틀 뒤 확인한다.
+  - 배포용 IAM 사용자의 액세스 키를 삭제하고 GitHub Secrets도 함께 지운다.
+- AWS Budgets에 월 예산 알림을 걸어 두면 요금이 늘어나는 것을 일찍 알 수 있다.

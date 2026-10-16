@@ -133,7 +133,7 @@ src/main/java/com/tripcast/tourweather/
 - 관광기후지수 연동(외부 API, 배치, 환경변수) 가이드: [docs/tour-climate-api.md](docs/tour-climate-api.md)
 - DB 스키마 관리(Flyway 마이그레이션, 기존 DB 편입) 가이드: [docs/flyway-migration.md](docs/flyway-migration.md)
 - 인증(JWT, 관리자 API) 가이드: [docs/auth.md](docs/auth.md)
-- AWS 배포(EC2 + RDS + GitHub Actions) 가이드: [docs/aws-deploy.md](docs/aws-deploy.md)
+- AWS 배포(EC2 + RDS + GitHub Actions) 가이드: [docs/aws-deploy.md](docs/aws-deploy.md) (현재 리소스를 삭제해 운영 중단 상태, 재배포 참고용)
 
 <details>
 <summary><h2> 컨벤션 </h2></summary>
