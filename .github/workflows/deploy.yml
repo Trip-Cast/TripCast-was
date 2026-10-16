@@ -1,10 +1,15 @@
 name: Deploy
 
+# AWS 리소스를 모두 삭제해 자동 배포를 중단했다. 다시 쓰려면 아래 workflow_dispatch를
+# 원래의 workflow_run 트리거로 되돌리고 AWS 인프라와 GitHub Secrets를 다시 만든다.
+#
+# on:
+#   workflow_run:
+#     workflows: ["Test"]
+#     types: [completed]
+#     branches: [main]
 on:
-  workflow_run:
-    workflows: ["Test"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
